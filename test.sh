@@ -67,14 +67,14 @@ while IFS= read -r commit_hash; do
   line=$(git log -1 --pretty=format:"%s" "$commit_hash")
   ((INDEX++)) || true
   # 解析提交类型
-  if [[ "$line" =~ ^([a-z]+)(\(.+$)?:(.+)$ ]]; then
+  if [[ "$line" =~ ^([a-z]+)(\$[^)]+\$)?:\ (.+)$ ]]; then
     type=${BASH_REMATCH[1]}
     scope=${BASH_REMATCH[2]:-""}
     subject=${BASH_REMATCH[3]}
 
     # 移除 scope 可能包含的括号
-    scope=${scope#\(}  # 删除左括号
-    scope=${scope%)}   # 删除右括号
+    scope=${scope#\$}  # 删除左括号
+    scope=${scope%\$}   # 删除右括号
 
     # 版本控制逻辑
     if [[ $type =~ ^(feat|refactor|perf)$ ]] && [ $VERSION_UPDATED -eq 0 ]; then
@@ -115,8 +115,7 @@ fi
 # 步骤5：生成zip包
 ZIP_FILE="${NEW_TAG}.zip"
 git archive --format=zip -o "$ZIP_FILE" "$NEW_TAG"
-# echo -e "\n生成的压缩包内容："
-# unzip -l "$ZIP_FILE"
+echo -e "\n将生成的zip包：$ZIP_FILE"
 
 # 步骤6：推送远程
 echo -e "\n=== 推送标签到远程仓库 ==="
