@@ -23,33 +23,14 @@ fi
 echo "=== 同步远程标签 ==="
 git fetch --tags
 echo -e "当前所有标签："
-git tag --sort=-creatordate
+git tag --sort=-creatordate | while read tag; do
+    git show --no-patch --no-notes --pretty='%ai' $tag
+done
+
 echo "=================================="
 
 # 步骤2：获取最新tag后的commit
-LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
-
-if [ -z "$LATEST_TAG" ]; then
-  echo -e "\n=== 初始化版本 ${PROJECT_NAME}_v$INITIAL_VERSION ==="
-  COMMIT_RANGE="HEAD"
-  MAJOR=$(echo $INITIAL_VERSION | cut -d. -f1)
-  MINOR=$(echo $INITIAL_VERSION | cut -d. -f2)
-else
-  TAG_DATE_ISO=$(git log -1 --format=%cd --date=iso "$LATEST_TAG")
-  echo -e "\n=== 最新标签 $LATEST_TAG (创建于 $TAG_DATE_ISO) ==="
-  
-  # 解析版本号（兼容项目名称前缀）
-  VERSION=$(echo "$LATEST_TAG" | grep -oP 'v$\K\d+\.\d+(?=$)')
-  MAJOR=$(echo $VERSION | cut -d. -f1)
-  MINOR=$(echo $VERSION | cut -d. -f2)
-  
-  # 过滤出提交时间晚于 LATEST_TAG 的 commit
-  COMMIT_RANGE_FILTERED=$(git log "${LATEST_TAG}..HEAD" --pretty=format:"%H" | while read commit; do
-    commit_date=$(git log -1 --format=%cd --date=iso "$commit")
-    if [[ "$commit_date" > "$TAG_DATE_ISO" ]]; then
-      echo "$commit"
-    fi
-  done)
+echo "$LATEST_TAG"
   
   if [ -z "$COMMIT_RANGE_FILTERED" ]; then
     echo -e "\n⚠️ 没有需要打包的新提交！"
