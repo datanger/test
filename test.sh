@@ -3,7 +3,6 @@ set -eo pipefail
 
 # ========== 自动配置区域 ==========
 REMOTE="origin"                      # 远程仓库名称
-INITIAL_VERSION="1.0"                # 初始版本号
 PROJECT_NAME=$(basename $(git rev-parse --show-toplevel) 2>/dev/null)  # 自动获取项目名称
 # =================================
 
@@ -28,21 +27,22 @@ done
 echo "=================================="
 
 # 步骤2：获取最新 tag 和提交范围
-LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
-if [ $? -ne 0 ]; then
+if LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null); then
+  # 解析版本号（兼容项目名称前缀）
+  VERSION=$(echo "$LATEST_TAG" | grep -oP '(?<=_v)\d+\.\d+$')
+  MAJOR=$(echo $VERSION | cut -d. -f1)
+  MINOR=$(echo $VERSION | cut -d. -f2)
+else
   LATEST_TAG=""
+  # 初始化版本号
+  MAJOR=1
+  MINOR=0
 fi
-
-# 初始化版本号
-MAJOR=0
-MINOR=0
 
 # 获取提交范围（直接输出格式化的提交信息）
 if [ -z "$LATEST_TAG" ]; then
   # 无 tag 时获取所有提交的元数据
   COMMIT_RANGE_FILTERED=$(git log --date=format:'%Y-%m-%d' --pretty=format:"%s   # %ad" | awk '{print NR ". ", $0}')
-  MAJOR=${INITIAL_VERSION%.*}
-  MINOR=${INITIAL_VERSION#*.}
 else
   # 有 tag 时获取自 tag 之后的提交元数据
   COMMIT_RANGE_FILTERED=$(git log "$LATEST_TAG..HEAD" --date=format:'%Y-%m-%d' --pretty=format:"%s   # %ad" | awk '{print NR ". ", $0}')
@@ -58,49 +58,42 @@ fi
 COMMIT_RANGE="$COMMIT_RANGE_FILTERED"
 echo "$COMMIT_RANGE"
 
-# 步骤3：过滤符合规范的 commit
-declare -a COMMIT_LIST
+VERSION_UPDATED=0
 while IFS= read -r line; do
-  ((INDEX++)) || true
-
   # 匹配提交类型（忽略前缀编号，类型被尖括号包裹）
-  if [[ "$line" =~ ^[0-9]+\.<([a-z]+)>(\$$[^\$$]*\$$)?:\ (.+)$ ]]; then
+  if [[ "$line" =~ ^[0-9]+.\ *\<([a-z]+)\> ]]; then
+
     type=${BASH_REMATCH[1]}
-    scope=${BASH_REMATCH[2]:-""}
-    subject=${BASH_REMATCH[3]}
 
     # 移除 scope 中的括号
     scope=${scope#$$}
     scope=${scope%$$}
 
     # 版本控制逻辑
-    if [[ $type =~ ^(feat|refactor|perf|chore)$ ]]; then
+    if [[ $type =~ ^(feat|refactor|perf|chore)$ ]] && [ $VERSION_UPDATED -eq 0 ]; then
       MAJOR=$((MAJOR + 1))
       MINOR=0
-    else
-      MINOR=$((MINOR + 1))
+      VERSION_UPDATED=1
     fi
-
-    # 生成带序号的提交记录
-    printf -v entry "%-4s [%-7s] %s" "${type^^}" "$subject"
-    COMMIT_LIST+=("$entry")
-  else
-    MINOR=$((MINOR + 1))
-    COMMIT_LIST+=("$line")
   fi
+
+if [ ${#VERSION_UPDATED[@]} -eq 0 ];then
+  ((MINOR++)) || true
+fi
+
 done <<< "$COMMIT_RANGE"
+
+# 步骤4：生成 tag 和变更日志
+if [ ${#COMMIT_RANGE[@]} -eq 0 ]; then
+  echo -e "\n⚠️ 没有需要打包的新提交！"
+  exit 0
+fi
 
 # 生成最终版本号
 NEW_VERSION="${MAJOR}.${MINOR}"
 NEW_TAG="${PROJECT_NAME}_v${NEW_VERSION}"
 
-# 步骤4：生成 tag 和变更日志
-if [ ${#COMMIT_LIST[@]} -eq 0 ]; then
-  echo -e "\n⚠️ 没有需要打包的新提交！"
-  exit 0
-fi
-
-CHANGELOG=$(printf "%s\n" "${COMMIT_LIST[@]}")
+CHANGELOG=$(printf "%s\n" "${COMMIT_RANGE[@]}")
 if [ -z "$LATEST_TAG" ]; then
   echo -e "\n=== 创建初始标签 $NEW_TAG ==="
   git tag -a "$NEW_TAG" -m "初始版本\n$CHANGELOG"
