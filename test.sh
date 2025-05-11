@@ -19,7 +19,7 @@ if [ -z "$PROJECT_NAME" ]; then
 fi
 
 # 步骤1：获取远程所有tags并打印
-echo "=== 同步远程标签 ==="
+echo "=========== 同步远程标签 ==========="
 git fetch --tags
 git tag --sort=-creatordate | while read tag; do
     git show --no-patch --no-notes --pretty='%ai' "$tag"
