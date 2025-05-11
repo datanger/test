@@ -81,7 +81,7 @@ if [ "$VERSION_UPDATED" -eq 0 ]; then
   MINOR=$((MINOR + 1))
 fi
 
-done <<< "$COMMIT_RANGE"
+done
 
 # 步骤4：生成 tag 和变更日志
 if [ ${#COMMIT_RANGE[@]} -eq 0 ]; then
