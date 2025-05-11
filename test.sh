@@ -22,55 +22,71 @@ fi
 # 步骤1：获取远程所有tags并打印
 echo "=== 同步远程标签 ==="
 git fetch --tags
-echo -e "当前所有标签："
 git tag --sort=-creatordate | while read tag; do
-    git show --no-patch --no-notes --pretty='%ai' $tag
+    git show --no-patch --no-notes --pretty='%ai' "$tag"
 done
-
 echo "=================================="
 
-# 步骤2：获取最新tag后的commit
-echo "$LATEST_TAG"
-  
-  if [ -z "$COMMIT_RANGE_FILTERED" ]; then
-    echo -e "\n⚠️ 没有需要打包的新提交！"
-    exit 0
-  fi
-  COMMIT_RANGE=$(echo "$COMMIT_RANGE_FILTERED" | xargs)
+# 步骤2：获取最新 tag 和提交范围
+LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
+if [ $? -ne 0 ]; then
+  LATEST_TAG=""
 fi
 
-# 步骤3：过滤符合规范的commit
-declare -a COMMIT_LIST
-INDEX=0
-VERSION_UPDATED=0
+# 初始化版本号
+MAJOR=0
+MINOR=0
 
-while IFS= read -r commit_hash; do
-  line=$(git log -1 --pretty=format:"%s" "$commit_hash")
+# 获取提交范围（直接输出格式化的提交信息）
+if [ -z "$LATEST_TAG" ]; then
+  # 无 tag 时获取所有提交的元数据
+  COMMIT_RANGE_FILTERED=$(git log --date=format:'%Y-%m-%d' --pretty=format:"%s   # %ad" | awk '{print NR ". ", $0}')
+  MAJOR=${INITIAL_VERSION%.*}
+  MINOR=${INITIAL_VERSION#*.}
+else
+  # 有 tag 时获取自 tag 之后的提交元数据
+  COMMIT_RANGE_FILTERED=$(git log "$LATEST_TAG..HEAD" --date=format:'%Y-%m-%d' --pretty=format:"%s   # %ad" | awk '{print NR ". ", $0}')
+fi
+
+# 检查是否有新提交
+if [ -z "$COMMIT_RANGE_FILTERED" ]; then
+  echo -e "\n⚠️ 没有需要打包的新提交！"
+  exit 0
+fi
+
+# 构建 commit 范围
+COMMIT_RANGE="$COMMIT_RANGE_FILTERED"
+echo "$COMMIT_RANGE"
+
+# 步骤3：过滤符合规范的 commit
+declare -a COMMIT_LIST
+while IFS= read -r line; do
   ((INDEX++)) || true
-  # 解析提交类型
-  if [[ "$line" =~ ^([a-z]+)(\$[^)]+\$)?:\ (.+)$ ]]; then
+
+  # 匹配提交类型（忽略前缀编号，类型被尖括号包裹）
+  if [[ "$line" =~ ^[0-9]+\.<([a-z]+)>(\$$[^\$$]*\$$)?:\ (.+)$ ]]; then
     type=${BASH_REMATCH[1]}
     scope=${BASH_REMATCH[2]:-""}
     subject=${BASH_REMATCH[3]}
 
-    # 移除 scope 可能包含的括号
-    scope=${scope#\$}  # 删除左括号
-    scope=${scope%\$}   # 删除右括号
+    # 移除 scope 中的括号
+    scope=${scope#$$}
+    scope=${scope%$$}
 
     # 版本控制逻辑
-    if [[ $type =~ ^(feat|refactor|perf)$ ]] && [ $VERSION_UPDATED -eq 0 ]; then
+    if [[ $type =~ ^(feat|refactor|perf|chore)$ ]]; then
       MAJOR=$((MAJOR + 1))
       MINOR=0
-      VERSION_UPDATED=1
-    elif [ $VERSION_UPDATED -eq 0 ]; then
+    else
       MINOR=$((MINOR + 1))
     fi
 
     # 生成带序号的提交记录
-    printf -v entry "%-4s [%-7s] %s" "$INDEX." "${type^^}" "$subject"
+    printf -v entry "%-4s [%-7s] %s" "${type^^}" "$subject"
     COMMIT_LIST+=("$entry")
   else
-    COMMIT_LIST+=("$INDEX.   [INVALID] 不符合规范的提交: $line")
+    MINOR=$((MINOR + 1))
+    COMMIT_LIST+=("$line")
   fi
 done <<< "$COMMIT_RANGE"
 
@@ -78,7 +94,7 @@ done <<< "$COMMIT_RANGE"
 NEW_VERSION="${MAJOR}.${MINOR}"
 NEW_TAG="${PROJECT_NAME}_v${NEW_VERSION}"
 
-# 步骤4：生成tag和变更日志
+# 步骤4：生成 tag 和变更日志
 if [ ${#COMMIT_LIST[@]} -eq 0 ]; then
   echo -e "\n⚠️ 没有需要打包的新提交！"
   exit 0
@@ -93,10 +109,10 @@ else
   git tag -a "$NEW_TAG" -m "变更记录：\n$CHANGELOG"
 fi
 
-# 步骤5：生成zip包
+# 步骤5：生成 zip 包
 ZIP_FILE="${NEW_TAG}.zip"
 git archive --format=zip -o "$ZIP_FILE" "$NEW_TAG"
-echo -e "\n将生成的zip包：$ZIP_FILE"
+echo -e "\n将生成的 zip 包：$ZIP_FILE"
 
 # 步骤6：推送远程
 echo -e "\n=== 推送标签到远程仓库 ==="
