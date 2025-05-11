@@ -78,7 +78,7 @@ while IFS= read -r line; do
   fi
 
 if [ ${#VERSION_UPDATED[@]} -eq 0 ];then
-  ((MINOR++)) || true
+  MINOR=$((MINOR + 1))
 fi
 
 done <<< "$COMMIT_RANGE"
