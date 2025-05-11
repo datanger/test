@@ -77,7 +77,7 @@ while IFS= read -r line; do
     fi
   fi
 
-if [ ${#VERSION_UPDATED[@]} -eq 0 ];then
+if [ "$VERSION_UPDATED" -eq 0 ]; then
   MINOR=$((MINOR + 1))
 fi
 
